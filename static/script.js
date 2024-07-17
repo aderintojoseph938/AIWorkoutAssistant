@@ -90,3 +90,63 @@ document.getElementById("user-input").addEventListener("keypress", function(even
         sendMessage();
     }
 });
+const messages = document.getElementById('messages');
+
+function sendMessage() {
+    const userInput = document.getElementById('userInput').value;
+    if (userInput.trim() === '') return;
+
+    addMessage('User', userInput);
+    document.getElementById('userInput').value = '';
+
+    // Simulate bot response
+    setTimeout(() => {
+        const botResponse = getBotResponse(userInput);
+        addMessage('Bot', botResponse);
+    }, 1000);
+}
+
+function addMessage(sender, text) {
+    const message = document.createElement('div');
+    message.className = sender.toLowerCase();
+    message.innerText = `${sender}: ${text}`;
+    messages.appendChild(message);
+    messages.scrollTop = messages.scrollHeight;
+}
+
+let step = 0;
+let medicalHistory = {};
+
+function getBotResponse(input) {
+    if (step === 0) {
+        step++;
+        return 'Hello! Please tell me about any medical conditions you have.';
+    } else if (step === 1) {
+        medicalHistory.conditions = input;
+        step++;
+        return 'Thank you! Do you have any injuries or surgeries I should know about?';
+    } else if (step === 2) {
+        medicalHistory.injuries = input;
+        step++;
+        return 'Got it! Which muscle group would you like to train today? (e.g., chest, back, legs, arms)';
+    } else if (step === 3) {
+        const muscleGroup = input.toLowerCase();
+        return getTrainingInfo(muscleGroup);
+    } else {
+        return 'I can help you with training information. Please specify a muscle group.';
+    }
+}
+
+function getTrainingInfo(muscleGroup) {
+    const trainingInfo = {
+        chest: 'For chest exercises, you can do bench presses, push-ups, and chest flies. Make sure to keep your back flat and avoid locking your elbows.',
+        back: 'For back exercises, try pull-ups, rows, and lat pulldowns. Keep your core tight and avoid swinging your body.',
+        legs: 'For leg exercises, squats, lunges, and leg presses are great. Ensure your knees don’t go past your toes and keep your back straight.',
+        arms: 'For arm exercises, bicep curls, tricep dips, and hammer curls are effective. Keep your elbows close to your body and avoid using momentum.'
+    };
+
+    return trainingInfo[muscleGroup] || 'Sorry, I don’t have information on that muscle group. Please choose from chest, back, legs, or arms.';
+}
+document.addEventListener('DOMContentLoaded', () => {
+    addMessage('Bot', 'Hello! Please tell me about any medical conditions you have.');
+});
