@@ -5,16 +5,17 @@ import os
 
 app = Flask(__name__)
 
+
 # Session configuration
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-
 # Home route
 @app.route('/')
 def home():
     return render_template('index.html')
+
 
 
 # Chat route - handles the conversation with the LLM

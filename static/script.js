@@ -1,7 +1,7 @@
 // Teachable Machine model URL
 //const URL = "https://teachablemachine.withgoogle.com/models/-q6hHNGve/";
 const URL = "https://teachablemachine.withgoogle.com/models/8PYrvj5U2/";
-let model, webcam, labelContainer, maxPredictions;
+let model, webcam, ctx, labelContainer, maxPredictions;
 let currentAnimal = "";
 
 // Initialize webcam and model
@@ -9,17 +9,27 @@ async function init() {
     const modelURL = URL + "model.json";
     const metadataURL = URL + "metadata.json";
 
-    model = await tmImage.load(modelURL, metadataURL);
+    model = await tmPose.load(modelURL, metadataURL);
     maxPredictions = model.getTotalClasses();
 
     // Setup webcam
     const flip = true;
-    webcam = new tmImage.Webcam(200, 200, flip);
+    webcam = new tmPose.Webcam(200, 200, flip);
     await webcam.setup();
     await webcam.play();
     window.requestAnimationFrame(loop);
 
+
+    const webcamContainer = document.getElementById("webcam-container");
+    webcamContainer.innerHTML = '';
+
     document.getElementById("webcam-container").appendChild(webcam.canvas);
+    document.getElementById("webcam-container").style.display="none";
+    canvas = document.getElementById("my-canvas");
+    //canvas.width = webcam.width;
+    //canvas.height = webcam.height;
+    
+    ctx = canvas.getContext("2d");
 
     // Setup label container
     labelContainer = document.getElementById("label-container");
@@ -36,13 +46,42 @@ async function loop() {
 }
 
 // Predict function
-async function predict() {
-    const prediction = await model.predict(webcam.canvas);
+//async function predict() {
+    //const prediction = await model.predict(webcam.canvas);
+    //for (let i = 0; i < maxPredictions; i++) {
+        //const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+        //labelContainer.childNodes[i].innerHTML = classPrediction;
+        //if (prediction[i].probability > 0.5) {
+            //currentAnimal = prediction[i].className;
+        //}
+    //}
+//}
+async function predict(){
+    const { pose, posenetOutput} = await model.estimatePose(webcam.canvas);
+    const prediction = await model.predict(posenetOutput);
+
     for (let i = 0; i < maxPredictions; i++) {
-        const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+        const classPrediction =
+            prediction[i].className + ": " + prediction[i].probability.toFixed(2);
         labelContainer.childNodes[i].innerHTML = classPrediction;
+
         if (prediction[i].probability > 0.5) {
             currentAnimal = prediction[i].className;
+        }
+    }
+
+    drawPose(pose);
+}
+
+function drawPose(pose) {
+    if (ctx && webcam.canvas) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height );
+        ctx.drawImage(webcam.canvas, 0, 0);
+        // draw the keypoints and skeleton
+        if (pose) {
+            const minPartConfidence = 0.5;
+            tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+            tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
         }
     }
 }
