@@ -18,18 +18,27 @@ def home():
 
 
 
+def friendly_error(error):
+    if not os.environ.get("OPENAI_API_KEY"):
+        return "The chat needs an OpenAI key. Set OPENAI_API_KEY and restart the app."
+    return f"The assistant could not answer: {error}"
+
+
 # Chat route - handles the conversation with the LLM
 @app.route('/chat', methods=['POST'])
 def chat():
     user_message = request.json['message']
-    animal_type = request.json['animalType']
+    exercise = request.json.get('exercise', '')
 
     if 'conversation' not in session:
         session['conversation'] = []
 
     session['conversation'].append({"role": "user", "content": user_message})
+    session.modified = True
 
-    system_message = f"The user is showing a picture of a {animal_type}. Respond accordingly."
+    system_message = "You are a friendly workout assistant. Give short, practical advice on form and training."
+    if exercise:
+        system_message += f" The camera currently sees the user doing: {exercise}."
     messages = [{
         "role": "system",
         "content": system_message
@@ -44,9 +53,10 @@ def chat():
             "role": "assistant",
             "content": gpt_response
         })
+        session.modified = True
         return jsonify({'response': gpt_response})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': friendly_error(e)}), 500
 
 
 if __name__ == '__main__':

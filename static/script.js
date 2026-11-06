@@ -1,41 +1,49 @@
 // Teachable Machine model URL
-//const URL = "https://teachablemachine.withgoogle.com/models/-q6hHNGve/";
 const URL = "https://teachablemachine.withgoogle.com/models/8PYrvj5U2/";
+const CAMERA_SIZE = 400;
+const MIN_CONFIDENCE = 0.5;
 let model, webcam, ctx, labelContainer, maxPredictions;
-let currentAnimal = "";
+let currentExercise = "";
 
 // Initialize webcam and model
 async function init() {
-    const modelURL = URL + "model.json";
-    const metadataURL = URL + "metadata.json";
+    const startButton = document.getElementById("start-button");
+    const cameraStatus = document.getElementById("camera-status");
+    startButton.disabled = true;
+    cameraStatus.textContent = "Loading the model...";
 
-    model = await tmPose.load(modelURL, metadataURL);
-    maxPredictions = model.getTotalClasses();
+    try {
+        model = await tmPose.load(URL + "model.json", URL + "metadata.json");
+        maxPredictions = model.getTotalClasses();
 
-    // Setup webcam
-    const flip = true;
-    webcam = new tmPose.Webcam(200, 200, flip);
-    await webcam.setup();
-    await webcam.play();
-    window.requestAnimationFrame(loop);
-
-
-    const webcamContainer = document.getElementById("webcam-container");
-    webcamContainer.innerHTML = '';
+        // Setup webcam
+        const flip = true;
+        webcam = new tmPose.Webcam(CAMERA_SIZE, CAMERA_SIZE, flip);
+        await webcam.setup();
+        await webcam.play();
+    } catch (error) {
+        console.error("Error:", error);
+        cameraStatus.textContent = "Could not start the camera. Check that this page can use your webcam, then try again.";
+        startButton.disabled = false;
+        return;
+    }
 
     document.getElementById("webcam-container").appendChild(webcam.canvas);
-    document.getElementById("webcam-container").style.display="none";
-    canvas = document.getElementById("my-canvas");
-    //canvas.width = webcam.width;
-    //canvas.height = webcam.height;
-    
-    ctx = canvas.getContext("2d");
+    ctx = document.getElementById("my-canvas").getContext("2d");
+    document.getElementById("camera").classList.add("is-live");
+    document.getElementById("current-exercise").textContent = "Waiting for a pose";
 
     // Setup label container
     labelContainer = document.getElementById("label-container");
-    for (let i = 0; i < maxPredictions; i++) {
-        labelContainer.appendChild(document.createElement("div"));
+    for (const className of model.getClassLabels()) {
+        const row = document.createElement("div");
+        row.className = "label-row";
+        row.innerHTML = '<span class="label-name"></span><div class="label-track"><div class="label-fill"></div></div><span class="label-value">0%</span>';
+        row.querySelector(".label-name").textContent = className;
+        labelContainer.appendChild(row);
     }
+
+    window.requestAnimationFrame(loop);
 }
 
 // Main prediction loop
@@ -46,28 +54,25 @@ async function loop() {
 }
 
 // Predict function
-//async function predict() {
-    //const prediction = await model.predict(webcam.canvas);
-    //for (let i = 0; i < maxPredictions; i++) {
-        //const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-        //labelContainer.childNodes[i].innerHTML = classPrediction;
-        //if (prediction[i].probability > 0.5) {
-            //currentAnimal = prediction[i].className;
-        //}
-    //}
-//}
-async function predict(){
-    const { pose, posenetOutput} = await model.estimatePose(webcam.canvas);
+async function predict() {
+    const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
     const prediction = await model.predict(posenetOutput);
 
+    let top = null;
     for (let i = 0; i < maxPredictions; i++) {
-        const classPrediction =
-            prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-        labelContainer.childNodes[i].innerHTML = classPrediction;
-
-        if (prediction[i].probability > 0.5) {
-            currentAnimal = prediction[i].className;
+        const percent = Math.round(prediction[i].probability * 100) + "%";
+        const row = labelContainer.children[i];
+        row.querySelector(".label-fill").style.width = percent;
+        row.querySelector(".label-value").textContent = percent;
+        if (prediction[i].probability > MIN_CONFIDENCE) {
+            top = prediction[i];
         }
+        row.classList.toggle("is-current", prediction[i].probability > MIN_CONFIDENCE);
+    }
+
+    if (top) {
+        currentExercise = top.className;
+        document.getElementById("current-exercise").textContent = currentExercise;
     }
 
     drawPose(pose);
@@ -75,7 +80,7 @@ async function predict(){
 
 function drawPose(pose) {
     if (ctx && webcam.canvas) {
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height );
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.drawImage(webcam.canvas, 0, 0);
         // draw the keypoints and skeleton
         if (pose) {
@@ -88,35 +93,43 @@ function drawPose(pose) {
 
 // Send message function
 function sendMessage() {
-    const userInput = document.getElementById("user-input").value;
+    const input = document.getElementById("user-input");
+    const userInput = input.value;
     if (userInput.trim() === "") return;
 
-    addMessageToChat(userInput, 'user');
+    addMessageToChat(userInput, "user");
+    input.value = "";
 
-    fetch('/chat', {
-        method: 'POST',
+    fetch("/chat", {
+        method: "POST",
         headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
         },
         body: JSON.stringify({
             message: userInput,
-            animalType: currentAnimal
+            exercise: currentExercise,
         }),
     })
-    .then(response => response.json())
-    .then(data => {
-        addMessageToChat(data.response, 'bot');
+    .then((response) => response.json())
+    .then((data) => {
+        if (data.error) {
+            addMessageToChat(data.error, "error");
+        } else {
+            addMessageToChat(data.response, "bot");
+        }
     })
     .catch((error) => {
-        console.error('Error:', error);
+        console.error("Error:", error);
+        addMessageToChat("Could not reach the app. Is it still running?", "error");
     });
-
-    document.getElementById("user-input").value = "";
 }
 
 // Add message to chat
 function addMessageToChat(message, sender) {
     const chatContainer = document.getElementById("chat-container");
+    const emptyMessage = document.getElementById("chat-empty");
+    if (emptyMessage) emptyMessage.remove();
+
     const messageElement = document.createElement("div");
     messageElement.classList.add("message", sender + "-message");
     messageElement.textContent = message;

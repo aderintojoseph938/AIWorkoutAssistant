@@ -3,31 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Animal Chat</title>
+    <title>AI Workout Assistant</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
 </head>
 <body>
-    <div id="container">
-        <h1>AI Workout Assistant</h1>
-        <!-- Webcam and image recognition elements -->
-        <div id="combo-container" style="text-align: center;">
-            <div id="webcam-container" > </div>
-            <canvas id="my-canvas" style="padding-left: 75px;"></canvas>
-        </div>
-        <div id="label-container"></div>
-        <button onclick="init()">Start Webcam</button>
+    <main id="container">
+        <header>
+            <h1>AI Workout Assistant</h1>
+            <p>Your camera spots the exercise. The assistant helps with your form.</p>
+        </header>
 
-        <!-- Chat interface -->
-        <div id="chat-container"></div>
-        <div id="input-container">
-            <input type="text" id="user-input" placeholder="Type your message...">
-            <button onclick="sendMessage()">Send</button>
+        <div id="panels">
+            <section class="panel" aria-label="Camera">
+                <div id="camera">
+                    <div id="webcam-container"></div>
+                    <canvas id="my-canvas" width="400" height="400"></canvas>
+                    <div id="camera-empty">
+                        <p id="camera-status">Stand back so your whole body is in frame.</p>
+                        <button id="start-button" onclick="init()">Start Webcam</button>
+                    </div>
+                </div>
+                <h2>Detected exercise</h2>
+                <div id="current-exercise">Not started</div>
+                <div id="label-container"></div>
+            </section>
+
+            <section class="panel" id="chat-panel" aria-label="Chat">
+                <h2>Ask the assistant</h2>
+                <div id="chat-container">
+                    <p id="chat-empty">Ask about your form, reps or what to try next.</p>
+                </div>
+                <div id="input-container">
+                    <input type="text" id="user-input" placeholder="Type your message..." aria-label="Your message">
+                    <button id="send-button" onclick="sendMessage()">Send</button>
+                </div>
+            </section>
         </div>
-    </div>
+    </main>
 
     <!-- Required scripts -->
-    <!--<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script> -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
