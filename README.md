@@ -1,11 +1,28 @@
 # AIWorkoutAssistant
 This super advanced AI uses multiple LLMS and libraries to have an accurate response to any input workout related.
 
+The camera spots which exercise you are doing (Teachable Machine pose model), counts your reps from the joint angles PoseNet sees, and a chat assistant answers questions about your form.
+
 ## Run it
 
-1. Install the packages: `poetry install`
+1. Install the packages: `poetry install` (or without Poetry: `pip install -r requirements.txt`)
 2. Set your OpenAI key: `export OPENAI_API_KEY=your_key` (Windows PowerShell: `$env:OPENAI_API_KEY="your_key"`)
-3. Start the app: `poetry run python app.py`
-4. Open http://localhost:8080 and click Start Webcam
+3. Start the app: `poetry run python app.py` (or `python app.py`)
+4. Open http://localhost:8080 in Chrome and click Start Webcam, then Allow when the browser asks for the camera
 
 Do not commit your key.
+
+The chat uses `gpt-4o-mini`. If OpenAI retires it, set `OPENAI_MODEL` to another chat model before starting the app.
+
+## Demo day notes
+
+- The pose model, PoseNet and TensorFlow.js are saved in `static/`, so the camera side works with no internet. Only the chat needs a connection.
+- Stand about two meters back so your whole body is in frame. The page says "No one in frame" until it can see enough of a person.
+- Reps count once the exercise label is steady. One rep is the joint angle reaching the working end of the move and coming back to rest (the angles are in `REP_RULES` in `static/script.js`).
+- "Ask for a tip on ..." sends the detected exercise to the assistant for a one line form tip.
+- "Next guest" clears the chat and the rep counts for the next person.
+- Once the browser has allowed the camera, a page refresh starts it again without clicking.
+
+## Tests
+
+`python -m unittest tests.test_app` runs the chat and reset routes with a mocked OpenAI call. No key is needed.

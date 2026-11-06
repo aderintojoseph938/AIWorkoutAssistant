@@ -31,6 +31,10 @@ body {
 }
 
 header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
     margin-bottom: 24px;
 }
 
@@ -108,12 +112,43 @@ h2 {
     display: none;
 }
 
-/* Detected exercise and confidence bars */
-#current-exercise {
+/* Detected exercise, rep count and confidence bars */
+#readout {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
     margin-bottom: 14px;
-    font-size: 24px;
+}
+
+#current-exercise {
+    font-size: 28px;
     font-weight: 700;
     color: var(--accent);
+}
+
+#current-exercise.is-waiting {
+    color: var(--muted);
+}
+
+#reps {
+    text-align: right;
+}
+
+#rep-count {
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
+}
+
+.is-hidden {
+    visibility: hidden;
+}
+
+#tip-button {
+    width: 100%;
+    margin-bottom: 14px;
 }
 
 .label-row {
@@ -214,6 +249,17 @@ button:hover {
 button:disabled {
     cursor: default;
     opacity: 0.6;
+}
+
+button.secondary {
+    flex-shrink: 0;
+    color: var(--text);
+    background-color: var(--panel);
+    border: 1px solid var(--line);
+}
+
+button.secondary:hover {
+    background-color: var(--line);
 }
 
 /* Chat message styling */
