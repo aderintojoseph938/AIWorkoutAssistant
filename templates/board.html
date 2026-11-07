@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pushup AI High Scores</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='board.css') }}">
+</head>
+<body class="board-page">
+    <header class="board-header">
+        <p class="board-eyebrow">AI Demo Day project</p>
+        <h1>Pushup AI</h1>
+        <p class="board-lede">An AI agent that watches your body through the camera and counts your reps. Pick a move at the station and see how many you can do in 20 seconds.</p>
+        <p class="board-credit">Built by Joseph Aderinto</p>
+    </header>
+
+    <main id="board" aria-label="High scores"></main>
+
+    <script src="{{ url_for('static', filename='board.js') }}"></script>
+</body>
+</html>

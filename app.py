@@ -102,6 +102,12 @@ def add_score():
     return jsonify({'scores': board, 'place': place if place < BOARD_SIZE else None})
 
 
+# Scoreboard for the second monitor - description and high scores, no controls
+@app.route('/board')
+def board():
+    return render_template('board.html')
+
+
 # Staff page - not linked from the guest screen
 @app.route('/staff')
 def staff():

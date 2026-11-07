@@ -146,6 +146,10 @@ class HighScoreTests(unittest.TestCase):
         self.assertEqual(self.client.post("/scores/clear", json={"confirm": "CLEAR"}).status_code, 200)
         self.assertEqual(self.client.get("/scores").get_json()["scores"]["Arm Raises"], [])
 
+    def test_scoreboard_page_loads_and_is_not_linked_from_the_guest_page(self):
+        self.assertEqual(self.client.get("/board").status_code, 200)
+        self.assertNotIn(b"/board", self.client.get("/").data)
+
     def test_staff_page_is_not_linked_from_the_guest_page(self):
         self.assertEqual(self.client.get("/staff").status_code, 200)
         self.assertNotIn(b"/staff", self.client.get("/").data)
