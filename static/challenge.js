@@ -5,12 +5,14 @@ const COUNTDOWN_SECONDS = 3;
 const CHALLENGE_SECONDS = 20;
 const BOARD_SIZE = 5;
 
-// Easiest first. Attendees are dressed up, so nothing here needs weights or the floor.
-// "exercise" is the name of the rep rule in script.js.
+// Easiest first. Attendees are dressed up, so the moves with no floor come before pushups.
+// "exercise" is the name of the rep rule in script.js. "setup" is what to do during the countdown.
 const CHALLENGE_MOVES = [
     { name: "Arm Raises", exercise: "Lateral Raises", hint: "Arms at your sides. Lift them straight out to shoulder height, then back down." },
     { name: "Curls", exercise: "Bicep Curls", hint: "Elbows by your sides. Hands up to your shoulders, then all the way down." },
     { name: "Squats", exercise: "Squats", hint: "Sit back like there is a chair behind you, then stand all the way up." },
+    { name: "Pushups", exercise: "Pushups", hint: "Turn sideways to the camera so it sees your whole body.",
+      setup: "Get down sideways to the camera, in the middle of the picture." },
 ];
 
 let highScores = {};
@@ -111,7 +113,7 @@ function startChallenge(move) {
     document.getElementById("play-move").textContent = move.name;
     document.getElementById("play-big").textContent = COUNTDOWN_SECONDS;
     document.getElementById("play-timer").textContent = "Get ready";
-    document.getElementById("play-hint").textContent = "Stand in the middle, back far enough that the camera sees your whole body.";
+    document.getElementById("play-hint").textContent = move.setup || "Stand in the middle, back far enough that the camera sees your whole body.";
 
     let left = COUNTDOWN_SECONDS;
     challengeClock = setInterval(() => {
@@ -158,7 +160,7 @@ function finishChallenge() {
     document.getElementById("result-score").textContent = finalScore;
     document.getElementById("result-message").textContent = onBoard ? "You made the board! Add your name."
         : finalScore > 0 ? "Nice work. Not quite the top five."
-        : "No reps counted. Stand back so the camera sees your whole body, then try again.";
+        : "No reps counted. Make sure the camera sees your whole body, then try again.";
     document.getElementById("result-form").hidden = !onBoard;
     document.getElementById("result-save").disabled = false;
     document.getElementById("result-name").value = "";

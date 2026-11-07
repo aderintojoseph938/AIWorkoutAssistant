@@ -27,7 +27,7 @@ SYSTEM_MESSAGE = (
 
 # High score board. It lives in a small file so it survives a page refresh or a restart.
 BOARD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "high_scores.json")
-BOARD_MOVES = ["Arm Raises", "Curls", "Squats"]
+BOARD_MOVES = ["Arm Raises", "Curls", "Squats", "Pushups"]
 BOARD_SIZE = 5
 MAX_NAME_LENGTH = 16
 # Nobody does more than this in 20 seconds, so anything higher is not a real score

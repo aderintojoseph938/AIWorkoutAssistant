@@ -19,7 +19,7 @@ The chat uses `gpt-4o-mini`. If OpenAI retires it, set `OPENAI_MODEL` to another
 - The pose model, PoseNet and TensorFlow.js are saved in `static/`, so the camera side works with no internet. Only the chat needs a connection.
 - Stand about two meters back so your whole body is in frame. The page says "No one in frame" until it can see enough of a person.
 - Reps come from body movement, not the model's guess, so curls, arm raises, squats and pushups all count at once. One rep is the joint angle reaching the working end of the move and coming back to rest. Squats watch how far the hips drop, because knee angle barely changes when you face the camera. The numbers are in `REP_RULES` in `static/script.js`.
-- The 20 second challenge is in `static/challenge.js`. Only the picked move scores. Pushups stay out of the challenge and still count in free mode for demos.
+- The 20 second challenge is in `static/challenge.js`. Only the picked move scores. Pushups are the last option. Turn sideways so the camera sees your whole body.
 - High scores are saved in `high_scores.json` next to `app.py`. To wipe them, go to `/staff` and type CLEAR.
 - "Ask for a tip on ..." sends the detected exercise to the assistant for a one line form tip.
 - "Next guest" clears the chat, the rep counts and the challenge for the next person. The high scores stay.

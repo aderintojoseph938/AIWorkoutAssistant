@@ -95,13 +95,20 @@ class HighScoreTests(unittest.TestCase):
 
     def test_board_starts_empty_for_each_guest_move(self):
         scores = self.client.get("/scores").get_json()["scores"]
-        self.assertEqual(scores, {"Arm Raises": [], "Curls": [], "Squats": []})
+        self.assertEqual(scores, {"Arm Raises": [], "Curls": [], "Squats": [], "Pushups": []})
 
     def test_keeps_the_top_five_in_order(self):
         for i, score in enumerate([3, 9, 5, 7, 1, 8]):
             self.add(f"guest {i}", score)
         rows = self.client.get("/scores").get_json()["scores"]["Arm Raises"]
         self.assertEqual([row["score"] for row in rows], [9, 8, 7, 5, 3])
+
+    def test_each_move_has_its_own_board(self):
+        self.add("arms", 5)
+        self.add("floor", 7, move="Pushups")
+        scores = self.client.get("/scores").get_json()["scores"]
+        self.assertEqual([row["name"] for row in scores["Pushups"]], ["floor"])
+        self.assertEqual([row["name"] for row in scores["Arm Raises"]], ["arms"])
 
     def test_place_is_reported_and_ties_stay_below(self):
         self.add("first", 5)
@@ -119,7 +126,7 @@ class HighScoreTests(unittest.TestCase):
     def test_bad_scores_and_moves_are_rejected(self):
         for score in [0, -1, 61, 2.5, "5", True, None]:
             self.assertEqual(self.add("x", score).status_code, 400, score)
-        self.assertEqual(self.add("x", 5, move="Pushups").status_code, 400)
+        self.assertEqual(self.add("x", 5, move="Dead Lift").status_code, 400)
         self.assertFalse(os.path.exists(self.board_file))
 
     def test_board_survives_reset_and_a_broken_file_is_empty(self):
