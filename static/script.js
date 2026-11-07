@@ -80,7 +80,7 @@ async function init() {
     startButton.disabled = true;
 
     if (typeof tmPose === "undefined") {
-        cameraStatus.textContent = "The pose model files did not load. Refresh the page and try again.";
+        cameraStatus.textContent = "The pose model didn't load. Refresh the page and try again.";
         startButton.disabled = false;
         return;
     }
@@ -98,7 +98,7 @@ async function init() {
         await webcam.play();
     } catch (error) {
         console.error("Error:", error);
-        cameraStatus.textContent = "Could not start the camera. Check that this page can use your webcam, then try again.";
+        cameraStatus.textContent = "Couldn't start the camera. Check that this page can use your webcam, then try again.";
         startButton.disabled = false;
         return;
     }
@@ -421,7 +421,7 @@ function sendMessage(text) {
     })
     .catch((error) => {
         console.error("Error:", error);
-        addMessageToChat("Could not reach the app. Is it still running?", "error");
+        addMessageToChat("Couldn't reach the app. Try again in a moment.", "error");
     });
 }
 

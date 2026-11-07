@@ -10,7 +10,7 @@ const BOARD_SIZE = 5;
 const CHALLENGE_MOVES = [
     { name: "Arm Raises", exercise: "Lateral Raises", hint: "Arms at your sides. Lift them straight out to shoulder height, then back down." },
     { name: "Curls", exercise: "Bicep Curls", hint: "Elbows by your sides. Hands up to your shoulders, then all the way down." },
-    { name: "Squats", exercise: "Squats", hint: "Sit back like there is a chair behind you, then stand all the way up." },
+    { name: "Squats", exercise: "Squats", hint: "Sit back like there's a chair behind you, then stand all the way up." },
     { name: "Pushups", exercise: "Pushups", hint: "Turn sideways to the camera so it sees your whole body.",
       setup: "Get down sideways to the camera, in the middle of the picture." },
 ];
@@ -158,7 +158,7 @@ function finishChallenge() {
     const onBoard = madeTheBoard(finalScore, challengeMove.name);
     document.getElementById("result-move").textContent = challengeMove.name;
     document.getElementById("result-score").textContent = finalScore;
-    document.getElementById("result-message").textContent = onBoard ? "You made the board! Add your name."
+    document.getElementById("result-message").textContent = onBoard ? "You made the board! Add your first name."
         : finalScore > 0 ? "Nice work. Not quite the top five."
         : "No reps counted. Make sure the camera sees your whole body, then try again.";
     document.getElementById("result-form").hidden = !onBoard;
@@ -196,7 +196,7 @@ function saveScore() {
     .catch((error) => {
         console.error("Error:", error);
         saveButton.disabled = false;
-        document.getElementById("result-message").textContent = "Could not save that. Try again.";
+        document.getElementById("result-message").textContent = "Couldn't save that. Try again.";
     });
 }
 
