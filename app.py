@@ -122,7 +122,7 @@ def check_station_key():
         response.set_cookie(KEY_COOKIE, key.decode(), max_age=KEY_COOKIE_SECONDS,
                             httponly=True, secure=True, samesite="Lax")
         return response
-    return "This station needs its key link.", 403
+    return "This station needs its key link. Use the C2C Pushup or C2C Pushup Board shortcut on the desktop.", 403
 
 
 # Home route

@@ -9,7 +9,7 @@
 <body>
     <main id="container">
         <h1>Staff</h1>
-        <p>This wipes the high scores for every move. It cannot be undone. Type CLEAR to confirm.</p>
+        <p>This wipes the high scores for every move. It can't be undone. Type CLEAR to confirm.</p>
         <div id="input-container">
             <input type="text" id="user-input" aria-label="Type CLEAR">
             <button id="clear-button" onclick="clearBoard()">Clear the board</button>
@@ -29,7 +29,7 @@
                 document.getElementById("staff-message").textContent = data.error || "The board is clear.";
             })
             .catch(() => {
-                document.getElementById("staff-message").textContent = "Could not reach the app.";
+                document.getElementById("staff-message").textContent = "Couldn't reach the app.";
             });
         }
     </script>
