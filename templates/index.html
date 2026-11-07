@@ -11,7 +11,7 @@
         <header>
             <div>
                 <h1>AI Workout Assistant</h1>
-                <p>Your camera spots the exercise and counts your reps. The assistant helps with your form.</p>
+                <p>Your camera counts your reps. Take the 20 second challenge and get on the board.</p>
             </div>
             <button id="reset-button" class="secondary" onclick="nextGuest()">Next guest</button>
         </header>
@@ -40,8 +40,39 @@
                 <div id="label-container"></div>
             </section>
 
-            <section class="panel" id="chat-panel" aria-label="Chat">
-                <h2>Ask the assistant</h2>
+            <section class="panel" id="challenge-panel" aria-label="Challenge">
+                <div id="challenge-pick">
+                    <h2>20 second challenge</h2>
+                    <p id="challenge-status">Start the webcam, then pick a move.</p>
+                    <div id="move-list"></div>
+                    <button class="secondary" onclick="showChat(true)">Ask the assistant</button>
+                </div>
+
+                <div id="challenge-play" hidden>
+                    <div id="play-move"></div>
+                    <div id="play-big">3</div>
+                    <div id="play-timer">Get ready</div>
+                    <p id="play-hint"></p>
+                </div>
+
+                <div id="challenge-result" hidden>
+                    <h2 id="result-move"></h2>
+                    <div id="result-score">0</div>
+                    <p id="result-message"></p>
+                    <div id="result-form">
+                        <input type="text" id="result-name" maxlength="16" placeholder="Your name" aria-label="Your name">
+                        <button id="result-save" onclick="saveScore()">Save</button>
+                    </div>
+                    <ol id="result-board" class="board"></ol>
+                    <button onclick="nextGuest()">Done</button>
+                </div>
+            </section>
+
+            <section class="panel" id="chat-panel" aria-label="Chat" hidden>
+                <div id="chat-title">
+                    <h2>Ask the assistant</h2>
+                    <button class="secondary" onclick="showChat(false)">Back to the challenge</button>
+                </div>
                 <div id="chat-container">
                     <p id="chat-empty">Ask about your form, reps or what to try next.</p>
                 </div>
@@ -57,5 +88,6 @@
     <script src="{{ url_for('static', filename='vendor/tf.min.js') }}"></script>
     <script src="{{ url_for('static', filename='vendor/teachablemachine-pose.min.js') }}"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='challenge.js') }}"></script>
 </body>
 </html>

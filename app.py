@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify, session
 from flask_session import Session
+import json
 import openai
 import os
+import threading
 
 app = Flask(__name__)
 
@@ -23,10 +25,98 @@ SYSTEM_MESSAGE = (
     "Answer in two or three plain sentences. No markdown, no bullet points."
 )
 
+# High score board. It lives in a small file so it survives a page refresh or a restart.
+BOARD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "high_scores.json")
+BOARD_MOVES = ["Arm Raises", "Curls", "Squats"]
+BOARD_SIZE = 5
+MAX_NAME_LENGTH = 16
+# Nobody does more than this in 20 seconds, so anything higher is not a real score
+MAX_SCORE = 60
+board_lock = threading.Lock()
+
+
+def empty_board():
+    return {move: [] for move in BOARD_MOVES}
+
+
+def read_board():
+    try:
+        with open(BOARD_FILE) as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return empty_board()
+    board = empty_board()
+    if isinstance(saved, dict):
+        for move in BOARD_MOVES:
+            if isinstance(saved.get(move), list):
+                board[move] = saved[move]
+    return board
+
+
+def write_board(board):
+    # Write a new file and swap it in, so a crash can never leave half a board
+    temp_file = BOARD_FILE + ".tmp"
+    with open(temp_file, "w") as f:
+        json.dump(board, f)
+    os.replace(temp_file, BOARD_FILE)
+
+
+def clean_name(name):
+    # Keep letters, numbers and simple name punctuation, then squeeze the spaces
+    kept = "".join(ch for ch in str(name) if ch.isalnum() or ch in " '-.")
+    return " ".join(kept.split())[:MAX_NAME_LENGTH].strip() or "Guest"
+
+
 # Home route
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+# High scores - read the board
+@app.route('/scores', methods=['GET'])
+def get_scores():
+    with board_lock:
+        return jsonify({'scores': read_board()})
+
+
+# High scores - add one score. Ties stay below the older score.
+@app.route('/scores', methods=['POST'])
+def add_score():
+    data = request.get_json(silent=True) or {}
+    move = data.get('move')
+    score = data.get('score')
+
+    if move not in BOARD_MOVES:
+        return jsonify({'error': 'Unknown move.'}), 400
+    if type(score) is not int or not 1 <= score <= MAX_SCORE:
+        return jsonify({'error': 'Score is out of range.'}), 400
+
+    entry = {'name': clean_name(data.get('name', '')), 'score': score}
+    with board_lock:
+        board = read_board()
+        ranked = sorted(board[move] + [entry], key=lambda row: -row['score'])
+        place = next(i for i, row in enumerate(ranked) if row is entry)
+        board[move] = ranked[:BOARD_SIZE]
+        write_board(board)
+    return jsonify({'scores': board, 'place': place if place < BOARD_SIZE else None})
+
+
+# Staff page - not linked from the guest screen
+@app.route('/staff')
+def staff():
+    return render_template('staff.html')
+
+
+# High scores - wipe the board. The staff page has to send the word CLEAR.
+@app.route('/scores/clear', methods=['POST'])
+def clear_scores():
+    data = request.get_json(silent=True) or {}
+    if data.get('confirm') != 'CLEAR':
+        return jsonify({'error': 'Type CLEAR to wipe the board.'}), 400
+    with board_lock:
+        write_board(empty_board())
+    return jsonify({'ok': True})
 
 
 

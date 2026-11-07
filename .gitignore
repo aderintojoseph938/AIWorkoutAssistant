@@ -2,5 +2,7 @@ venv/
 
 .DS_Store
 flask_session/
+high_scores.json
+high_scores.json.tmp
 __pycache__/
 .env

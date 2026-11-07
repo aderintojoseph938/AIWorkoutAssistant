@@ -17,21 +17,48 @@ const STEADY_FRAMES = 6;
 // For each exercise: the three points that make the joint angle we watch,
 // the angle when the body is at rest, and the angle at the working end of the move.
 // One rep = the angle reaches the working angle and then comes back to the rest angle.
+// All of these run on every frame, whatever the model's guess says. Pushups only count
+// when the body is lying flat, and the others only count when it is upright.
+// Squats are different: facing the camera, the knee angle barely changes on screen, so we
+// watch how far the hips drop instead. Their rest and work numbers are torso lengths, not degrees.
 const REP_RULES = {
     "Bicep Curls":    { joints: ["Shoulder", "Elbow", "Wrist"], rest: 150, work: 70 },
-    "Squats":         { joints: ["Hip", "Knee", "Ankle"],       rest: 160, work: 110 },
-    "Pushups":        { joints: ["Shoulder", "Elbow", "Wrist"], rest: 155, work: 100 },
-    "Dead Lift":      { joints: ["Shoulder", "Hip", "Knee"],    rest: 160, work: 110 },
-    "Lateral Raises": { joints: ["Hip", "Shoulder", "Elbow"],   rest: 30,  work: 75 },
-    "Leg raises":     { joints: ["Shoulder", "Hip", "Knee"],    rest: 160, work: 100 },
-    "Pull Up":        { joints: ["Shoulder", "Elbow", "Wrist"], rest: 150, work: 70 },
+    "Squats":         { hipDrop: true,                          rest: 0.1, work: 0.25 },
+    "Pushups":        { joints: ["Shoulder", "Elbow", "Wrist"], rest: 155, work: 100, lying: true },
+    "Lateral Raises": { joints: ["Hip", "Shoulder", "Elbow"],   rest: 40,  work: 75 },
 };
+
+// Counting uses a lower bar than the skeleton does, because PoseNet is unsure of wrists and hips
+// in a pushup. To make up for that, each angle is the middle of the last few frames, so one bad frame
+// cannot count a rep.
+const COUNT_KEYPOINT_SCORE = 0.15;
+const ANGLE_FRAMES = 3;
+
+// The standing hip height follows you up right away and sinks slowly, so it keeps up
+// if you shift your feet or the camera gets bumped
+const STANDING_DRIFT = 0.01;
+
+// PoseNet follows one person, and with people nearby it can hop back and forth. Squats stay locked
+// on one person. Hips this far sideways (in torso lengths) from where we last saw them are someone else.
+// We only switch to them if they stay for this many frames, or if they are clearly closer to the camera.
+const PERSON_JUMP = 0.5;
+const PERSON_SWITCH_FRAMES = 20;
+const CLOSER_RATIO = 1.25;
+
+// The body is lying flat when the shoulder to hip line is closer to sideways than to up and down
+const LYING_RATIO = 0.8;
+
+// How long the last counted exercise stays on screen when the person drops out of the picture.
+// PoseNet often loses someone in a pushup, so this stops the count flashing away between reps.
+const REP_HOLD_MS = 10000;
 
 let model, webcam, ctx, labelContainer, maxPredictions;
 let currentExercise = "";
 let recentLabels = [];
 let repCounts = {};
-let repState = { inRep: false };
+let repTrackers = {};
+let repExercise = "";
+let lastRepTime = 0;
 
 // PoseNet normally downloads its weights from Google. Hand it the copy in this repo instead.
 const POSENET_REMOTE = "https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/float/075/";
@@ -78,6 +105,7 @@ async function init() {
     ctx = document.getElementById("my-canvas").getContext("2d");
     document.getElementById("camera").classList.add("is-live");
     showExercise("");
+    cameraReady();
 
     // Setup label container
     labelContainer = document.getElementById("label-container");
@@ -104,10 +132,14 @@ async function predict() {
     const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
     drawPose(pose);
 
+    // Reps come from the joint angles, so they count even when the model's guess is wrong
+    countReps(pose);
+
     // Nobody in frame: the model would still guess an exercise, so stop here
     if (!personInFrame(pose)) {
         recentLabels = [];
-        showExercise("No one in frame");
+        const holdRep = repExercise && Date.now() - lastRepTime < REP_HOLD_MS;
+        showExercise(holdRep ? repExercise : "No one in frame");
         for (const row of labelContainer.children) {
             row.classList.remove("is-current");
         }
@@ -131,15 +163,9 @@ async function predict() {
     // Remember the last few winners and only switch when one of them is steady
     recentLabels.push(top ? top.className : "");
     if (recentLabels.length > RECENT_FRAMES) recentLabels.shift();
-    const steady = steadyLabel(recentLabels);
-    if (steady && steady !== currentExercise) {
-        repState = { inRep: false };
-    }
-    showExercise(steady);
 
-    if (currentExercise) {
-        countReps(pose, currentExercise);
-    }
+    // Once someone has finished a rep, what they actually did beats the model's guess
+    showExercise(repExercise || steadyLabel(recentLabels));
 }
 
 // Count how many body points PoseNet is confident about
@@ -192,40 +218,137 @@ function jointAngle(a, b, c) {
     return angle;
 }
 
-// Pick the side of the body (left or right) that the camera sees best, and return its three points
-function bestSidePoints(pose, joints) {
-    let best = null;
-    for (const side of ["left", "right"]) {
-        const points = joints.map((joint) => pose.keypoints.find((k) => k.part === side + joint));
-        if (points.some((p) => !p || p.score < MIN_KEYPOINT_SCORE)) continue;
-        const score = points.reduce((sum, p) => sum + p.score, 0);
-        if (!best || score > best.score) best = { score, points };
-    }
-    return best ? best.points.map((p) => p.position) : null;
+// The middle value of a short list
+function median(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+}
+
+// The point on one body part, or null if PoseNet is not sure enough about it
+function keypoint(pose, part) {
+    const point = pose.keypoints.find((k) => k.part === part);
+    return point && point.score >= COUNT_KEYPOINT_SCORE ? point.position : null;
+}
+
+// The average position of a left and right body part, using whichever ones PoseNet can see
+function middlePoint(pose, part) {
+    const points = [keypoint(pose, "left" + part), keypoint(pose, "right" + part)].filter(Boolean);
+    if (points.length === 0) return null;
+    return {
+        x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+        y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+    };
+}
+
+// True when the shoulder to hip line is flat, false when upright, null when we cannot tell
+function isLyingFlat(pose) {
+    const shoulder = middlePoint(pose, "Shoulder");
+    const hip = middlePoint(pose, "Hip");
+    if (!shoulder || !hip) return null;
+    return Math.abs(hip.x - shoulder.x) > Math.abs(hip.y - shoulder.y) * LYING_RATIO;
 }
 
 // Count a rep when the joint angle reaches the working angle and then returns to the rest angle
-function countRep(angle, rule, state) {
+function countRep(angle, rule, tracker) {
     const closing = rule.work < rule.rest;
     const atWork = closing ? angle <= rule.work : angle >= rule.work;
     const atRest = closing ? angle >= rule.rest : angle <= rule.rest;
-    if (atWork) state.inRep = true;
-    if (atRest && state.inRep) {
-        state.inRep = false;
+    if (atWork) tracker.inRep = true;
+    if (atRest && tracker.inRep) {
+        tracker.inRep = false;
         return true;
     }
     return false;
 }
 
-function countReps(pose, exercise) {
+// Each exercise keeps a separate tracker for each side of the body, so an arm the camera
+// loses for a moment does not break the rep on the other arm
+function repTracker(exercise, side) {
+    const key = exercise + " " + side;
+    if (!repTrackers[key]) repTrackers[key] = { angles: [], inRep: false, reps: 0 };
+    return repTrackers[key];
+}
+
+// Update the hip drop for a squat. Returns true when a rep finishes.
+function countHipDrop(pose, rule, tracker) {
+    const shoulder = middlePoint(pose, "Shoulder");
+    const hip = middlePoint(pose, "Hip");
+    if (!shoulder || !hip) return false;
+
+    const torso = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y);
+    if (tracker.hipX !== undefined && Math.abs(hip.x - tracker.hipX) > torso * PERSON_JUMP) {
+        tracker.framesAway = (tracker.framesAway || 0) + 1;
+        if (tracker.framesAway < PERSON_SWITCH_FRAMES && torso < tracker.torso * CLOSER_RATIO) return false;
+        tracker.hipHeights = [];
+        tracker.standingY = undefined;
+        tracker.inRep = false;
+    }
+    tracker.framesAway = 0;
+    tracker.hipX = hip.x;
+
+    tracker.hipHeights = tracker.hipHeights || [];
+    tracker.hipHeights.push(hip.y);
+    if (tracker.hipHeights.length > ANGLE_FRAMES) tracker.hipHeights.shift();
+    const hipY = median(tracker.hipHeights);
+
+    // On screen, y gets bigger as you go down. A smaller y means the hips are higher.
+    if (tracker.standingY === undefined || hipY < tracker.standingY) {
+        tracker.standingY = hipY;
+        tracker.torso = torso;
+    } else {
+        tracker.standingY += (hipY - tracker.standingY) * STANDING_DRIFT;
+    }
+
+    const drop = (hipY - tracker.standingY) / tracker.torso;
+    if (!countRep(drop, rule, tracker)) return false;
+    tracker.reps++;
+    return true;
+}
+
+// Update one side of one exercise. Returns true when that side finishes a rep.
+function countSide(pose, exercise, side) {
     const rule = REP_RULES[exercise];
-    if (!rule) return;
-    const points = bestSidePoints(pose, rule.joints);
-    if (!points) return;
-    const angle = jointAngle(points[0], points[1], points[2]);
-    if (countRep(angle, rule, repState)) {
-        repCounts[exercise] = (repCounts[exercise] || 0) + 1;
-        document.getElementById("rep-count").textContent = repCounts[exercise];
+    const points = rule.joints.map((joint) => keypoint(pose, side + joint));
+    if (points.includes(null)) return false;
+
+    const tracker = repTracker(exercise, side);
+    tracker.angles.push(jointAngle(points[0], points[1], points[2]));
+    if (tracker.angles.length > ANGLE_FRAMES) tracker.angles.shift();
+    if (!countRep(median(tracker.angles), rule, tracker)) return false;
+    tracker.reps++;
+    return true;
+}
+
+// Save a new highest count for an exercise and put it on screen
+function landRep(exercise, count) {
+    if (count <= (repCounts[exercise] || 0)) return;
+    repCounts[exercise] = count;
+    repExercise = exercise;
+    lastRepTime = Date.now();
+    showExercise(exercise);
+}
+
+// Run every exercise's counter on this frame. Both arms curling together is one rep, not two,
+// so the count is the higher of the two sides.
+function countReps(pose) {
+    if (!pose) return;
+    const lying = isLyingFlat(pose);
+    if (lying === null) return;
+
+    for (const exercise in REP_RULES) {
+        const rule = REP_RULES[exercise];
+        if (Boolean(rule.lying) !== lying) continue;
+
+        if (rule.hipDrop) {
+            const tracker = repTracker(exercise, "hips");
+            if (countHipDrop(pose, rule, tracker)) landRep(exercise, tracker.reps);
+        } else {
+            const left = countSide(pose, exercise, "left");
+            const right = countSide(pose, exercise, "right");
+            if (left || right) {
+                landRep(exercise, Math.max(repTracker(exercise, "left").reps, repTracker(exercise, "right").reps));
+            }
+        }
     }
 }
 
@@ -244,6 +367,7 @@ function drawPose(pose) {
 // Ask the assistant about the exercise the camera sees
 function askForTip() {
     if (!currentExercise) return;
+    showChat(true);
     sendMessage("Give me one quick form tip for " + currentExercise + ".");
 }
 
@@ -293,12 +417,21 @@ function addMessageToChat(message, sender) {
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// Clear the chat and the rep counts so the next person starts fresh
-function nextGuest() {
+// Start every rep count again from zero
+function clearReps() {
     repCounts = {};
-    repState = { inRep: false };
+    repTrackers = {};
+    repExercise = "";
+    lastRepTime = 0;
     recentLabels = [];
     document.getElementById("rep-count").textContent = "0";
+}
+
+// Clear the chat, the rep counts and the challenge so the next person starts fresh.
+// The high score board stays.
+function nextGuest() {
+    clearReps();
+    resetChallenge();
     document.getElementById("chat-container").innerHTML = '<p id="chat-empty">Ask about your form, reps or what to try next.</p>';
     document.getElementById("user-input").value = "";
     fetch("/reset", { method: "POST" }).catch((error) => console.error("Error:", error));
