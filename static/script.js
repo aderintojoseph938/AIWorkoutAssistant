@@ -124,8 +124,12 @@ async function init() {
 
 // Main prediction loop
 async function loop() {
-    webcam.update();
-    await predict();
+    try {
+        webcam.update();
+        await predict();
+    } catch (error) {
+        console.error("Error:", error);
+    }
     window.requestAnimationFrame(loop);
 }
 
