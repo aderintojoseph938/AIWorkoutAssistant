@@ -392,14 +392,22 @@ function askForTip() {
     sendMessage("Give me one quick form tip for " + currentExercise + ".");
 }
 
+// Only one chat request at a time. The guard clears when the reply or error lands.
+let chatBusy = false;
+
 // Send message function
 function sendMessage(text) {
+    if (chatBusy) return;
     const input = document.getElementById("user-input");
+    const sendButton = document.getElementById("send-button");
     const userInput = text || input.value;
     if (userInput.trim() === "") return;
 
     addMessageToChat(userInput, "user");
     input.value = "";
+    chatBusy = true;
+    sendButton.disabled = true;
+    const thinking = addMessageToChat("Thinking...", "bot");
 
     fetch("/chat", {
         method: "POST",
@@ -413,6 +421,7 @@ function sendMessage(text) {
     })
     .then((response) => response.json())
     .then((data) => {
+        thinking.remove();
         if (data.error) {
             addMessageToChat(data.error, "error");
         } else {
@@ -420,8 +429,13 @@ function sendMessage(text) {
         }
     })
     .catch((error) => {
+        thinking.remove();
         console.error("Error:", error);
         addMessageToChat("Couldn't reach the app. Try again in a moment.", "error");
+    })
+    .finally(() => {
+        chatBusy = false;
+        sendButton.disabled = false;
     });
 }
 
@@ -436,6 +450,7 @@ function addMessageToChat(message, sender) {
     messageElement.textContent = message;
     chatContainer.appendChild(messageElement);
     chatContainer.scrollTop = chatContainer.scrollHeight;
+    return messageElement;
 }
 
 // Start every rep count again from zero
@@ -456,6 +471,8 @@ function nextGuest() {
     resetChallenge();
     document.getElementById("chat-container").innerHTML = '<p id="chat-empty">Ask about your form, reps or what to try next.</p>';
     document.getElementById("user-input").value = "";
+    chatBusy = false;
+    document.getElementById("send-button").disabled = false;
     fetch("/reset", { method: "POST" }).catch((error) => console.error("Error:", error));
 }
 
