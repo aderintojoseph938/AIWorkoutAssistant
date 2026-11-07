@@ -187,7 +187,8 @@ def clear_scores():
 def friendly_error(error):
     if not os.environ.get("OPENAI_API_KEY"):
         return "The chat needs an OpenAI key. Set OPENAI_API_KEY and restart the app."
-    return f"The assistant could not answer: {error}"
+    app.logger.warning("Chat request failed: %r", error)
+    return "The assistant couldn't answer. Try again in a moment."
 
 
 # Chat route - handles the conversation with the LLM
