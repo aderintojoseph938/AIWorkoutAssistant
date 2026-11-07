@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, redirect, render_template, request, jsonify, session
 from flask_session import Session
+import hmac
 import json
 import openai
 import os
@@ -11,6 +12,7 @@ app = Flask(__name__)
 # Session configuration
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
 Session(app)
 
 # Which OpenAI model answers the chat. Change it with OPENAI_MODEL if this one is ever retired.
@@ -19,13 +21,26 @@ MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 # Only the last few messages go to the model so a long chat stays fast and cheap
 MAX_HISTORY = 10
 
+# Give up on a chat reply after this many seconds, with no retries, so a slow
+# connection shows an error instead of leaving the guest waiting
+CHAT_TIMEOUT_SECONDS = 15
+openai.max_retries = 0
+
 SYSTEM_MESSAGE = (
     "You are a friendly workout assistant at a busy event. "
     "Give short, practical advice on form and training. "
     "Answer in two or three plain sentences. No markdown, no bullet points."
 )
 
-# High score board. It lives in a small file so it survives a page refresh or a restart.
+# When the app is hosted, STATION_KEY keeps strangers out. Open the site once with
+# ?key=... and a cookie remembers that station. With no STATION_KEY, like on a
+# laptop, the app is open.
+KEY_COOKIE = "station_key"
+KEY_COOKIE_SECONDS = 7 * 24 * 60 * 60
+
+# High score board. Hosted, it lives in the database, because a hosted app loses its
+# files on every restart. On a laptop it lives in a small file, which survives a
+# page refresh or a restart.
 BOARD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "high_scores.json")
 BOARD_MOVES = ["Arm Raises", "Curls", "Squats", "Pushups"]
 BOARD_SIZE = 5
@@ -39,12 +54,31 @@ def empty_board():
     return {move: [] for move in BOARD_MOVES}
 
 
-def read_board():
+def open_database():
+    # Imported here so a laptop without a database does not need psycopg installed
+    import psycopg
+    connection = psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=5)
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS high_scores (id INTEGER PRIMARY KEY, board TEXT NOT NULL)")
+    return connection
+
+
+def read_saved_board():
+    # A database error is not caught on purpose. Treating it as an empty board
+    # would let the next score wipe the real one.
+    if os.environ.get("DATABASE_URL"):
+        with open_database() as connection:
+            row = connection.execute("SELECT board FROM high_scores WHERE id = 1").fetchone()
+        return json.loads(row[0]) if row else None
     try:
         with open(BOARD_FILE) as f:
-            saved = json.load(f)
+            return json.load(f)
     except (OSError, ValueError):
-        return empty_board()
+        return None
+
+
+def read_board():
+    saved = read_saved_board()
     board = empty_board()
     if isinstance(saved, dict):
         for move in BOARD_MOVES:
@@ -54,6 +88,13 @@ def read_board():
 
 
 def write_board(board):
+    if os.environ.get("DATABASE_URL"):
+        with open_database() as connection:
+            connection.execute(
+                "INSERT INTO high_scores (id, board) VALUES (1, %s) "
+                "ON CONFLICT (id) DO UPDATE SET board = EXCLUDED.board",
+                (json.dumps(board),))
+        return
     # Write a new file and swap it in, so a crash can never leave half a board
     temp_file = BOARD_FILE + ".tmp"
     with open(temp_file, "w") as f:
@@ -65,6 +106,23 @@ def clean_name(name):
     # Keep letters, numbers and simple name punctuation, then squeeze the spaces
     kept = "".join(ch for ch in str(name) if ch.isalnum() or ch in " '-.")
     return " ".join(kept.split())[:MAX_NAME_LENGTH].strip() or "Guest"
+
+
+# Runs before every page, API call and static file
+@app.before_request
+def check_station_key():
+    key = os.environ.get("STATION_KEY", "").encode()
+    if not key:
+        return None
+    if hmac.compare_digest(request.cookies.get(KEY_COOKIE, "").encode(), key):
+        return None
+    if hmac.compare_digest(request.args.get("key", "").encode(), key):
+        # Remember this station, then reload without the key in the address
+        response = redirect(request.path)
+        response.set_cookie(KEY_COOKIE, key.decode(), max_age=KEY_COOKIE_SECONDS,
+                            httponly=True, secure=True, samesite="Lax")
+        return response
+    return "This station needs its key link.", 403
 
 
 # Home route
@@ -161,7 +219,8 @@ def chat():
         # Make a request to OpenAI API
         response = openai.chat.completions.create(model=MODEL,
                                                   messages=messages,
-                                                  max_tokens=200)
+                                                  max_tokens=200,
+                                                  timeout=CHAT_TIMEOUT_SECONDS)
         gpt_response = response.choices[0].message.content
         session['conversation'].append({
             "role": "assistant",

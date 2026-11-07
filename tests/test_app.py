@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -153,6 +154,104 @@ class HighScoreTests(unittest.TestCase):
     def test_staff_page_is_not_linked_from_the_guest_page(self):
         self.assertEqual(self.client.get("/staff").status_code, 200)
         self.assertNotIn(b"/staff", self.client.get("/").data)
+
+
+class StationKeyTests(unittest.TestCase):
+    def setUp(self):
+        workout_app.app.config["TESTING"] = True
+        self.client = workout_app.app.test_client()
+        patcher = patch.dict(os.environ, {"STATION_KEY": "test-station-key"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_no_key_is_refused_everywhere(self):
+        for path in ["/", "/board", "/staff", "/scores", "/static/script.js", "/static/model/model.json"]:
+            self.assertEqual(self.client.get(path).status_code, 403, path)
+        self.assertEqual(self.client.post("/scores", json={}).status_code, 403)
+        self.assertEqual(self.client.post("/chat", json={"message": "hi"}).status_code, 403)
+
+    def test_wrong_key_is_refused(self):
+        self.assertEqual(self.client.get("/?key=wrong").status_code, 403)
+        self.assertEqual(self.client.get("/?key=caf\u00e9").status_code, 403)
+
+    def test_key_link_sets_a_safe_cookie_and_drops_the_key_from_the_address(self):
+        page = self.client.get("/board?key=test-station-key")
+        self.assertEqual(page.status_code, 302)
+        self.assertEqual(page.headers["Location"], "/board")
+        cookie = page.headers["Set-Cookie"]
+        for part in ("HttpOnly", "Secure", "SameSite=Lax"):
+            self.assertIn(part, cookie)
+
+    def test_cookie_opens_everything(self):
+        self.client.set_cookie(workout_app.KEY_COOKIE, "test-station-key")
+        for path in ["/", "/board", "/staff", "/static/script.js"]:
+            self.assertEqual(self.client.get(path).status_code, 200, path)
+
+    def test_no_station_key_leaves_the_app_open(self):
+        with patch.dict(os.environ, {"STATION_KEY": ""}):
+            self.assertEqual(self.client.get("/").status_code, 200)
+
+
+class FakeCursor:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class FakeConnection:
+    """Stands in for Postgres: one table with one row."""
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def execute(self, sql, values=None):
+        if sql.startswith("INSERT"):
+            self.rows[1] = values[0]
+        if sql.startswith("SELECT"):
+            return FakeCursor((self.rows[1],) if 1 in self.rows else None)
+        return FakeCursor(None)
+
+
+class DatabaseBoardTests(unittest.TestCase):
+    def setUp(self):
+        workout_app.app.config["TESTING"] = True
+        self.client = workout_app.app.test_client()
+        self.rows = {}
+        self.fake_psycopg = MagicMock()
+        self.fake_psycopg.connect.side_effect = lambda *a, **k: FakeConnection(self.rows)
+        for patcher in (patch.dict(sys.modules, {"psycopg": self.fake_psycopg}),
+                        patch.dict(os.environ, {"DATABASE_URL": "postgres://not-real"}),
+                        patch.object(workout_app, "BOARD_FILE", "/nonexistent/folder/scores.json")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_scores_save_to_the_database_and_never_touch_the_file(self):
+        self.client.post("/scores", json={"move": "Curls", "name": "Ana", "score": 9})
+        rows = self.client.get("/scores").get_json()["scores"]["Curls"]
+        self.assertEqual(rows, [{"name": "Ana", "score": 9}])
+        self.assertIn("Ana", self.rows[1])
+
+    def test_clear_empties_the_database_board(self):
+        self.client.post("/scores", json={"move": "Curls", "name": "Ana", "score": 9})
+        self.client.post("/scores/clear", json={"confirm": "CLEAR"})
+        self.assertEqual(self.client.get("/scores").get_json()["scores"]["Curls"], [])
+
+    def test_a_database_failure_never_overwrites_the_board(self):
+        self.client.post("/scores", json={"move": "Curls", "name": "Ana", "score": 9})
+        self.fake_psycopg.connect.side_effect = OSError("database down")
+        workout_app.app.config["TESTING"] = False
+        self.addCleanup(workout_app.app.config.update, TESTING=True)
+        answer = self.client.post("/scores", json={"move": "Curls", "name": "Bo", "score": 2})
+        self.assertEqual(answer.status_code, 500)
+        self.assertIn("Ana", self.rows[1])
 
 
 if __name__ == "__main__":

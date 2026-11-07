@@ -14,6 +14,10 @@ Do not commit your key.
 
 The chat uses `gpt-4o-mini`. If OpenAI retires it, set `OPENAI_MODEL` to another chat model before starting the app.
 
+## Hosted version
+
+Hosted on Heroku, three settings change how the app runs. `DATABASE_URL` moves the high scores from `high_scores.json` into Postgres. `STATION_KEY` closes the site until a station opens it once with `?key=...`. `SECRET_KEY` signs the app's cookies. With none of them set, the app runs on a laptop exactly as above, with no internet needed except for the chat.
+
 ## Demo day notes
 
 - The pose model, PoseNet and TensorFlow.js are saved in `static/`, so the camera side works with no internet. Only the chat needs a connection.
