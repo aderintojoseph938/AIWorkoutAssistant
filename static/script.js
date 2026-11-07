@@ -25,7 +25,7 @@ const REP_RULES = {
     "Bicep Curls":    { joints: ["Shoulder", "Elbow", "Wrist"], rest: 150, work: 70 },
     "Squats":         { hipDrop: true,                          rest: 0.1, work: 0.25 },
     "Pushups":        { joints: ["Shoulder", "Elbow", "Wrist"], rest: 155, work: 100, lying: true },
-    "Lateral Raises": { joints: ["Hip", "Shoulder", "Elbow"],   rest: 40,  work: 75 },
+    "Lateral Raises": { joints: ["Hip", "Shoulder", "Elbow"],   rest: 40,  work: 80 },
 };
 
 // Counting uses a lower bar than the skeleton does, because PoseNet is unsure of wrists and hips
@@ -38,9 +38,10 @@ const ANGLE_FRAMES = 3;
 // if you shift your feet or the camera gets bumped
 const STANDING_DRIFT = 0.01;
 
-// PoseNet follows one person, and with people nearby it can hop back and forth. Squats stay locked
-// on one person. Hips this far sideways (in torso lengths) from where we last saw them are someone else.
-// We only switch to them if they stay for this many frames, or if they are clearly closer to the camera.
+// PoseNet follows one person, and with people nearby it can hop back and forth. Upright moves stay
+// locked on one person, so a bystander cannot add reps. Hips this far sideways (in torso lengths) from where we last saw them are someone else.
+// We only switch to them if they stay for this many frames, are clearly closer to the camera,
+// or are nearer the middle of the picture, where a guest stands, and about the same size.
 const PERSON_JUMP = 0.5;
 const PERSON_SWITCH_FRAMES = 20;
 const CLOSER_RATIO = 1.25;
@@ -59,6 +60,7 @@ let repCounts = {};
 let repTrackers = {};
 let repExercise = "";
 let lastRepTime = 0;
+let lockedPerson = null;
 
 // PoseNet normally downloads its weights from Google. Hand it the copy in this repo instead.
 const POSENET_REMOTE = "https://storage.googleapis.com/tfjs-models/savedmodel/posenet/mobilenet/float/075/";
@@ -265,8 +267,38 @@ function countRep(angle, rule, tracker) {
 // loses for a moment does not break the rep on the other arm
 function repTracker(exercise, side) {
     const key = exercise + " " + side;
-    if (!repTrackers[key]) repTrackers[key] = { angles: [], inRep: false, reps: 0 };
+    if (!repTrackers[key]) repTrackers[key] = { angles: [], hipHeights: [], inRep: false, reps: 0 };
     return repTrackers[key];
+}
+
+// Drop any half finished rep, but keep the reps already counted
+function clearRepsInProgress() {
+    for (const key in repTrackers) {
+        const tracker = repTrackers[key];
+        tracker.angles = [];
+        tracker.hipHeights = [];
+        tracker.standingY = undefined;
+        tracker.inRep = false;
+    }
+}
+
+// True when this frame shows the person we are locked on. Locks on to the first person seen.
+function isLockedPerson(pose) {
+    const shoulder = middlePoint(pose, "Shoulder");
+    const hip = middlePoint(pose, "Hip");
+    const torso = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y);
+
+    if (lockedPerson && Math.abs(hip.x - lockedPerson.hipX) > torso * PERSON_JUMP) {
+        lockedPerson.framesAway++;
+        const closer = torso >= lockedPerson.torso * CLOSER_RATIO;
+        const middle = CAMERA_SIZE / 2;
+        const moreCentral = Math.abs(hip.x - middle) < Math.abs(lockedPerson.hipX - middle) - torso * PERSON_JUMP
+            && torso >= lockedPerson.torso / CLOSER_RATIO;
+        if (lockedPerson.framesAway < PERSON_SWITCH_FRAMES && !closer && !moreCentral) return false;
+        clearRepsInProgress();
+    }
+    lockedPerson = { hipX: hip.x, torso: torso, framesAway: 0 };
+    return true;
 }
 
 // Update the hip drop for a squat. Returns true when a rep finishes.
@@ -275,18 +307,6 @@ function countHipDrop(pose, rule, tracker) {
     const hip = middlePoint(pose, "Hip");
     if (!shoulder || !hip) return false;
 
-    const torso = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y);
-    if (tracker.hipX !== undefined && Math.abs(hip.x - tracker.hipX) > torso * PERSON_JUMP) {
-        tracker.framesAway = (tracker.framesAway || 0) + 1;
-        if (tracker.framesAway < PERSON_SWITCH_FRAMES && torso < tracker.torso * CLOSER_RATIO) return false;
-        tracker.hipHeights = [];
-        tracker.standingY = undefined;
-        tracker.inRep = false;
-    }
-    tracker.framesAway = 0;
-    tracker.hipX = hip.x;
-
-    tracker.hipHeights = tracker.hipHeights || [];
     tracker.hipHeights.push(hip.y);
     if (tracker.hipHeights.length > ANGLE_FRAMES) tracker.hipHeights.shift();
     const hipY = median(tracker.hipHeights);
@@ -294,7 +314,7 @@ function countHipDrop(pose, rule, tracker) {
     // On screen, y gets bigger as you go down. A smaller y means the hips are higher.
     if (tracker.standingY === undefined || hipY < tracker.standingY) {
         tracker.standingY = hipY;
-        tracker.torso = torso;
+        tracker.torso = Math.hypot(hip.x - shoulder.x, hip.y - shoulder.y);
     } else {
         tracker.standingY += (hipY - tracker.standingY) * STANDING_DRIFT;
     }
@@ -334,6 +354,7 @@ function countReps(pose) {
     if (!pose) return;
     const lying = isLyingFlat(pose);
     if (lying === null) return;
+    if (!lying && !isLockedPerson(pose)) return;
 
     for (const exercise in REP_RULES) {
         const rule = REP_RULES[exercise];
@@ -423,6 +444,7 @@ function clearReps() {
     repTrackers = {};
     repExercise = "";
     lastRepTime = 0;
+    lockedPerson = null;
     recentLabels = [];
     document.getElementById("rep-count").textContent = "0";
 }

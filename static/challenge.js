@@ -111,7 +111,7 @@ function startChallenge(move) {
     document.getElementById("play-move").textContent = move.name;
     document.getElementById("play-big").textContent = COUNTDOWN_SECONDS;
     document.getElementById("play-timer").textContent = "Get ready";
-    document.getElementById("play-hint").textContent = "Stand back so the camera sees your whole body.";
+    document.getElementById("play-hint").textContent = "Stand in the middle, back far enough that the camera sees your whole body.";
 
     let left = COUNTDOWN_SECONDS;
     challengeClock = setInterval(() => {
